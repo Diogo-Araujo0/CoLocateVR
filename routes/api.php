@@ -37,6 +37,7 @@ Route::post('register', [AuthController::class, 'register']);
 
 Route::post('login', [AuthController::class, 'login']);
 
+Route::post('getPlayerInfo', [PlayersGroupsController::class, 'getPlayerInfo']);
 
 Route::group(['middleware' => ['auth:sanctum']], function () {
 

@@ -8,7 +8,10 @@ use App\Models\Session;
 use App\Models\Group;
 use App\Models\PlayerGroup;
 use App\Models\Player;
+use App\Models\Device;
 use App\Models\PlayerDevice;
+use Carbon\Carbon;
+use Carbon\CarbonInterval;
 use DB;
 
 class SessionsController extends Controller
@@ -25,9 +28,14 @@ class SessionsController extends Controller
         $validatedData = $request->validate([
             'session_time' => 'required',
             'phoneNumbers.*' => ['nullable', 'string', 'distinct'],
+            'devices.*' => ['nullable', 'string', 'distinct'],
         ]);
-
         
+        $startTime = now();
+
+        list($hours, $minutes, $seconds) = sscanf($validatedData['session_time'], "%d:%d:%d");
+        $totalSeconds = $hours * 3600 + $minutes * 60 + $seconds;
+        $endTime = Carbon::parse($startTime)->addSeconds($totalSeconds);
 
         //Query para obter todos os jogadores que estão a jogar, a query vai garantir que nenhum jogador inserido já esteja numa sessão
         $playersInActiveSession = DB::table('players')
@@ -36,6 +44,11 @@ class SessionsController extends Controller
             ->orderBy('players.id')
             ->get();
 
+            if (count($validatedData['phoneNumbers']) !== count($validatedData['devices'])) {
+                return response()->json(['error' => 'Not the same number of phoneNumber and devices'], 400);
+            }
+
+            
             foreach ($validatedData['phoneNumbers'] as $phoneNumber) {
                 foreach ($playersInActiveSession as $player) {
                     if ($player->phoneNumber === $phoneNumber) {
@@ -44,50 +57,55 @@ class SessionsController extends Controller
                 }
             }
 
-        //Atribuir o player_id aos phoneNumbers recebidos
-        $playerIds = [];
-        foreach ($validatedData['phoneNumbers'] as $phoneNumber) {
-            if ($phoneNumber === null) {
-                continue;
+            $playerIds = [];
+            foreach ($validatedData['phoneNumbers'] as $phoneNumber) {
+                if ($phoneNumber === null) {
+                    continue;
+                }
+                $player = Player::where('phoneNumber', $phoneNumber)->first();
+                if ($player) {
+                    $playerIds[] = $player->id;
+                }else {
+                    // Caso um dos número não exista
+                    return response()->json(['error' => 'One or more phoneNumber don\'t exist'], 404);
+                }
             }
-            $player = Player::where('phoneNumber', $phoneNumber)->first();
-            if ($player) {
-                $playerIds[] = $player->id;
-            }else {
-                // Caso um dos número não exista
-                return response()->json(['error' => 'One or more phoneNumber don\'t exist'], 404);
+
+
+            $devicesInUse = Device::select('devices.serialNumber')
+            ->join('player_devices', 'devices.id', '=', 'player_devices.device_id')
+            ->where('player_devices.is_active', 1)
+            ->distinct()
+            ->get();
+
+            foreach ($validatedData['devices'] as $serialNumber) {
+                foreach ($devicesInUse as $device) {
+                    if ($device->serialNumber === $serialNumber) {
+                        return response()->json(['error' => 'One of the devices is already in an active session'], 400);
+                    }
+                }
             }
-    
 
-        }
 
-        //Não deve chegar aqui
-        if (empty($playerIds)) {
-            return response()->json(['error' => 'We found no players with that phone number'], 404);
-        }
 
-        //query que fornece todos os devices existente que não estejam em uso
-        $devicesAvailable = DB::table('devices')
-        ->leftJoin('player_devices', function($join) {
-            $join->on('devices.id', '=', 'player_devices.device_id')
-                ->where('player_devices.is_active', '=', 1);
-        })
-        ->whereNull('player_devices.device_id')
-        ->orderBy('devices.id')
-        ->pluck('devices.id')
-        ->toArray();
+            foreach ($validatedData['devices'] as $device) {
+                if ($device === null) {
+                    continue;
+                }
+                
+                $deviceModel = Device::where('serialNumber', $device)->first();
+                if (!$deviceModel) {
+                    return response()->json(['error' => 'One or more devices don\'t exist'], 404);
+                }
+                if ($device) {
+                    $deviceID[] = $deviceModel->id;
+                }else {
+                    // Caso um dos número não exista
+                    return response()->json(['error' => 'One or more devices don\'t exist'], 404);
+                }
+            }
 
-        //Caso não haja nenhum device
-        if (empty($devicesAvailable)) {
-            return response()->json(['error' => 'No devices available'], 404);
-        }
-
-        //Caso não haja device para o grupo todo
-        if (count($playerIds) > count($devicesAvailable)) {
-            return response()->json(['error' => 'Insufficient devices available'], 404);
-        }
-
-        //criar grupo
+            //criar grupo
         $group = new Group([]);
 
         $group->save(); 
@@ -95,53 +113,41 @@ class SessionsController extends Controller
         //criar session
         $sessions = new Session([
             'group_id' => $group->id,
-            'session_time' => $validatedData['session_time'],
+            'start_time' => $startTime,
+            'end_time' => $endTime,
         ]);
         $sessions->save(); 
 
-        foreach($playerIds as $playerId){
-            if (!empty($devicesAvailable)) {
-                //Primeiro device do array
-                $deviceId = array_shift($devicesAvailable);
-
-                /*
-                Random Device
-                
-                $randomDevice = array_rand($devicesAvailable);
-                $deviceId = $devicesAvailable[$randomDevice];
-                unset($devicesAvailable[$randomDevice]);
-                */
-
-
-                // Atribuir device ao player
-                $playerDevice = new PlayerDevice([
-                    'player_id' => $playerId,
-                    'device_id' => $deviceId,
-                ]);
-                $playerDevice->save();
-
-                // Atribuir grupo ao player
-                $playerGroup = new PlayerGroup([
-                    'player_id' => $playerId,
-                    'group_id' => $group->id,
-                ]);
-                $playerGroup->save();
-            } else {
-                //Não deve chegar aqui
-                return response()->json(['error' => 'No devices available'], 404);
+        foreach ($validatedData['devices'] as $index => $device) {
+            if ($device === null) {
+                continue;
             }
+            
+            $deviceModel = Device::where('serialNumber', $device)->first();
+            if (!$deviceModel) {
+                return response()->json(['error' => 'One or more devices don\'t exist'], 404);
+            }
+            $deviceId = $deviceModel->id;
+        
+            // Dá o playerID
+            $playerId = $playerIds[$index];
+            
+            // Cria na tabela PlayerDevie
+            $playerDevice = new PlayerDevice([
+                'player_id' => $playerId,
+                'device_id' => $deviceId,
+            ]);
+            $playerDevice->save();
+        
+            // Cria na tabela PlayerGroup
+            $playerGroup = new PlayerGroup([
+                'player_id' => $playerId,
+                'group_id' => $group->id,
+            ]);
+            $playerGroup->save();
         }
 
-        
-
-
-
-        
-
         return response()->json($group->id, Response::HTTP_CREATED); 
-
-        
-
     }
 
 

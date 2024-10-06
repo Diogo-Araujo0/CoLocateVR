@@ -30,7 +30,6 @@ $lastGroup = null;
     @foreach($groupsInSession as $groupsInSessions)
         @if($lastGroup != $groupsInSessions->group_id)
             <h1>Group {{ $groupsInSessions->group_id }}</h1>
-            <h4>Time: {{$groupsInSessions->session_time}}</h4>
             <h2>Players:</h2>
             @php
             $lastGroup = $groupsInSessions->group_id
@@ -47,6 +46,36 @@ $lastGroup = null;
     @foreach($devicesAvailable as $devices)
         Device: {{ $devices->id }}
     @endforeach
+
+
+    
+    
+@if($sessionInfo)
+    <h2>Session Info</h2>
+    <p>Start Time: {{ $sessionInfo->start_time }}</p>
+    <p>End Time: {{ $sessionInfo->end_time }}</p>
+    
+    @if(isset($timeLeft))
+        <p>Time Left: {{ $timeLeft }}</p>
+    @else
+        <?php
+        $endTime = new DateTime($sessionInfo->end_time);
+        $currentTime = new DateTime();
+        $interval = $currentTime->diff($endTime);
+        $timeLeft = $interval->format('%H:%I:%S');
+        ?>
+        <p>Time Left: {{ $timeLeft }}</p>
+    @endif
+@endif
+
+
+
+
+
+
+
+
+
 
 
 

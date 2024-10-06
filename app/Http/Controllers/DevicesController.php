@@ -8,6 +8,7 @@ use App\Models\Device;
 use App\Models\Player;
 use App\Models\Group;
 use DB;
+use DateTime;
 
 
 
@@ -90,7 +91,7 @@ class DevicesController extends Controller
             ->select('devices.id')
             ->get();
 
-            $new = Yes;
+           
             $playersAvailable = DB::table('players')
                 ->join('player_devices', 'players.id' , '=' , 'player_devices.player_id')
                 ->where('is_active', '=' , 1)
@@ -99,6 +100,23 @@ class DevicesController extends Controller
                 ->get();
 
             
+        $sessionInfo = DB::table('sessions')
+        ->join('groups', 'sessions.group_id', '=', 'groups.id')
+        ->join('player_groups', 'player_groups.group_id', '=', 'groups.id')
+        ->where('is_active',1)
+        ->where('player_id', '=', 2)
+        ->first();
+
+
+        $endTime = new DateTime($sessionInfo->end_time);
+        $currentTime = new DateTime();
+        
+        $interval = $currentTime->diff($endTime);
+        
+
+        $timeLeft = $interval->format('%H:%I:%S');
+
+        
             
         
 
@@ -112,6 +130,6 @@ class DevicesController extends Controller
             
 
 
-        return view('teste', compact('devices','players','groups','groupsInSession','devicesAvailable','playersAvailable'));
+        return view('teste', compact('devices','players','groups','groupsInSession','devicesAvailable','playersAvailable','sessionInfo','timeLeft'));
     }   
 }

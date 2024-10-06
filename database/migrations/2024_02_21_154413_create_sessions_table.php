@@ -14,7 +14,8 @@ return new class extends Migration
         Schema::create('sessions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('group_id')->constrained()->onDelete('cascade');
-            $table->time('session_time');
+            $table->time('start_time');
+            $table->time('end_time');
             $table->boolean('is_active')->default(1);
             $table->timestamps();
         });

@@ -8,6 +8,6 @@ use Illuminate\Database\Eloquent\Model;
 class Session extends Model
 {
     use HasFactory;
-    protected $fillable = ['group_id','session_time','created_at', 'updated_at'];
+    protected $fillable = ['group_id','start_time','end_time','created_at', 'updated_at'];
 
 }
